@@ -4,6 +4,10 @@
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Directory listing: /{{ current_path }}</title>
+        <link
+            rel="stylesheet"
+            href="https://cdnjs.cloudflare.com/ajax/libs/plyr/3.7.8/plyr.css"
+        />
         <style>
             :root {
                 --bg-primary: #ffffff;
@@ -106,18 +110,6 @@
             .modified-column {
                 width: 200px;
             }
-            @media (max-width: 768px) {
-                .modified-column {
-                    display: none;
-                }
-                .size-column {
-                    width: 100px;
-                }
-                th,
-                td {
-                    padding: 12px 8px;
-                }
-            }
             .modal {
                 display: none;
                 position: fixed;
@@ -126,22 +118,56 @@
                 top: 0;
                 width: 100%;
                 height: 100%;
-                background-color: rgba(0, 0, 0, 0.8);
+                background-color: rgba(0, 0, 0, 0.9);
                 justify-content: center;
                 align-items: center;
-                overflow: auto;
             }
             .modal-content {
                 position: relative;
-                max-width: 90%;
-                max-height: 80%;
-                background-color: #fff;
-                padding: 4px;
-                border-radius: 2px;
+                width: 80vw;
+                height: 80vh;
+                display: flex;
+                justify-content: center;
+                align-items: center;
             }
-            .modal video {
+            .video-container {
                 width: 100%;
-                height: auto;
+                height: 100%;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+            }
+            .video-container .plyr {
+                width: 100%;
+                height: 100%;
+            }
+            .video-container .plyr video {
+                width: 100%;
+                height: 100%;
+                object-fit: contain;
+            }
+            .modal-close {
+                position: absolute;
+                right: -40px;
+                top: -40px;
+                background: none;
+                border: none;
+                color: #fff;
+                font-size: 24px;
+                cursor: pointer;
+                z-index: 1000;
+                padding: 10px;
+            }
+            @media (max-width: 768px) {
+                .modal-content {
+                    width: 95vw;
+                    height: 95vh;
+                    padding: 0;
+                }
+                .modal-close {
+                    right: 0;
+                    top: -40px;
+                }
             }
         </style>
     </head>
@@ -178,6 +204,7 @@
             </tr>
             {% endfor %}
         </table>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/plyr/3.7.8/plyr.min.js"></script>
         <script>
             function toggleTheme() {
                 const body = document.documentElement;
@@ -218,46 +245,134 @@
                 }
             });
             document.addEventListener("DOMContentLoaded", () => {
-                const videoMimeTypes = ["video/mp4", "video/webm", "video/mkv"];
+                const savedTheme = localStorage.getItem("theme") || "dark";
+                const html = document.documentElement;
+                const icon = document.querySelector(".theme-icon");
+                const text = document.querySelector(".theme-text");
+
+                if (savedTheme === "dark") {
+                    html.setAttribute("data-theme", "dark");
+                    icon.textContent = "☀️";
+                    text.textContent = "Light Mode";
+                } else {
+                    html.removeAttribute("data-theme");
+                    icon.textContent = "🌙";
+                    text.textContent = "Dark Mode";
+                }
 
                 const modal = document.createElement("div");
                 modal.classList.add("modal");
                 const modalContent = document.createElement("div");
                 modalContent.classList.add("modal-content");
+
+                const closeButton = document.createElement("button");
+                closeButton.classList.add("modal-close");
+                closeButton.innerHTML = "×";
+                closeButton.onclick = () => {
+                    modal.style.display = "none";
+                    modalContent.innerHTML = "";
+                };
+
                 modal.appendChild(modalContent);
                 document.body.appendChild(modal);
 
-                function openVideoModal(videoSrc) {
-                    const videoPlayer = document.createElement("video");
-                    videoPlayer.controls = true;
-                    videoPlayer.src = videoSrc;
-                    modalContent.appendChild(videoPlayer);
+                async function findSubtitles(videoPath) {
+                    const basePath = videoPath.substring(
+                        0,
+                        videoPath.lastIndexOf("."),
+                    );
+                    const subtitles = [];
+
+                    for (const ext of [".srt", ".vtt"]) {
+                        try {
+                            const response = await fetch(`${basePath}${ext}`);
+                            if (response.ok) {
+                                subtitles.push({
+                                    kind: "captions",
+                                    label: `Subtitles (${ext.substring(1)})`,
+                                    src: `${basePath}${ext}`,
+                                });
+                            }
+                        } catch (e) {
+                            console.log(`No ${ext} subtitles found`);
+                        }
+                    }
+
+                    return subtitles;
+                }
+
+                async function openVideoModal(videoSrc) {
+                    modalContent.innerHTML = "";
+                    modalContent.appendChild(closeButton);
+
+                    const videoContainer = document.createElement("div");
+                    videoContainer.classList.add("video-container");
+
+                    const videoElement = document.createElement("video");
+                    videoElement.controls = true;
+                    videoElement.classList.add("plyr-video");
+
+                    const subtitles = await findSubtitles(videoSrc);
+                    if (subtitles.length > 0) {
+                        subtitles.forEach((track) => {
+                            const trackElement =
+                                document.createElement("track");
+                            trackElement.kind = track.kind;
+                            trackElement.label = track.label;
+                            trackElement.src = track.src;
+                            videoElement.appendChild(trackElement);
+                        });
+                    }
+
+                    if (videoSrc.endsWith(".mkv")) {
+                        videoSrc = videoSrc.replace(".mkv", ".mp4");
+                    }
+
+                    videoElement.src = videoSrc;
+                    videoContainer.appendChild(videoElement);
+                    modalContent.appendChild(videoContainer);
+
+                    const player = new Plyr(videoElement);
+
+                    videoElement.addEventListener("loadedmetadata", () => {
+                        const videoAspectRatio =
+                            videoElement.videoWidth / videoElement.videoHeight;
+                        const modalWidth = modalContent.clientWidth;
+                        const modalHeight = modalContent.clientHeight;
+                        const modalAspectRatio = modalWidth / modalHeight;
+
+                        if (videoAspectRatio > modalAspectRatio) {
+                            videoContainer.style.width = "100%";
+                            videoContainer.style.height = "auto";
+                        } else {
+                            videoContainer.style.height = "100%";
+                            videoContainer.style.width = "auto";
+                        }
+                    });
+
                     modal.style.display = "flex";
                 }
 
-                modal.addEventListener("click", (event) => {
-                    if (event.target === modal) {
-                        modal.style.display = "none";
-                        modalContent.innerHTML = "";
-                        modalContent.appendChild(closeButton);
-                    }
-                });
-
                 const links = document.querySelectorAll("a");
-
                 links.forEach((link) => {
-                    const filePath = link.getAttribute("href");
                     const fileName = link.textContent.trim();
-
-                    if (fileName.match(/\.(mp4|webm|ogg)$/i)) {
+                    if (fileName.match(/\.(mp4|webm|mkv)$/i)) {
                         link.addEventListener("click", function (event) {
                             event.preventDefault();
                             openVideoModal(link.getAttribute("href"));
                         });
                     }
                 });
+
                 document.addEventListener("keydown", (event) => {
                     if (event.key === "Escape") {
+                        modal.style.display = "none";
+                        modalContent.innerHTML = "";
+                    }
+                });
+
+                modal.addEventListener("click", (event) => {
+                    if (event.target === modal) {
                         modal.style.display = "none";
                         modalContent.innerHTML = "";
                     }
