@@ -12,6 +12,9 @@ use std::path::{Path, PathBuf};
 struct Args {
 	#[arg(short, long, default_value_t = 8080)]
 	port: u16,
+
+	#[arg(short = 'o', long = "open", help = "Listen on all interfaces (0.0.0.0)")]
+	open: bool,
 }
 
 #[derive(Template)]
@@ -130,10 +133,11 @@ async fn serve_path(req: HttpRequest) -> Result<HttpResponse> {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
 	let args = Args::parse();
-	println!("Starting server at http://localhost:{}", args.port);
+	let host = if args.open { "0.0.0.0" } else { "127.0.0.1" };
+	println!("Starting server at http://{}:{}", host, args.port);
 
 	HttpServer::new(|| App::new().wrap(middleware::Compress::default()).service(serve_path))
-		.bind(("127.0.0.1", args.port))?
+		.bind((host, args.port))?
 		.run()
 		.await
 }
