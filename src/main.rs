@@ -77,6 +77,7 @@ async fn get_dir_entries(path: &Path) -> std::io::Result<Vec<DirEntry>> {
 	Ok(entries)
 }
 
+#[allow(clippy::future_not_send)]
 #[get("/{path:.*}")]
 async fn serve_path(req: HttpRequest) -> Result<HttpResponse> {
 	let path: PathBuf = req.match_info().query("path").parse().unwrap_or_default();
