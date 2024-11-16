@@ -263,6 +263,134 @@
                     }
                 });
             });
+
+            document.addEventListener("DOMContentLoaded", () => {
+                let currentFocusIndex = -1;
+                const rows = Array.from(
+                    document.querySelectorAll("table tr"),
+                ).slice(1);
+
+                function focusRow(index) {
+                    rows.forEach((row) => (row.style.backgroundColor = ""));
+
+                    if (index >= 0 && index < rows.length) {
+                        currentFocusIndex = index;
+                        const row = rows[currentFocusIndex];
+                        row.style.backgroundColor = "var(--hover-color)";
+                        row.scrollIntoView({
+                            block: "nearest",
+                            behavior: "smooth",
+                        });
+                    }
+                }
+
+                function navigateToParent() {
+                    const currentPath = window.location.pathname;
+                    const normalizedPath = currentPath.endsWith("/")
+                        ? currentPath.slice(0, -1)
+                        : currentPath;
+
+                    const pathSegments = normalizedPath.split("/");
+
+                    if (pathSegments.length <= 1) return;
+
+                    pathSegments.pop();
+                    const parentPath = pathSegments.join("/") || "/";
+
+                    window.location.href = parentPath;
+                }
+
+                function handleRowSelection() {
+                    if (
+                        currentFocusIndex >= 0 &&
+                        currentFocusIndex < rows.length
+                    ) {
+                        const link = rows[currentFocusIndex].querySelector("a");
+                        if (link) {
+                            const fileName = link.textContent.trim();
+                            if (fileName.match(/\.(mp4|webm|ogg)$/i)) {
+                                const event = new MouseEvent("click", {
+                                    bubbles: true,
+                                    cancelable: true,
+                                    view: window,
+                                });
+                                link.dispatchEvent(event);
+                            } else {
+                                window.location.href = link.href;
+                            }
+                        }
+                    }
+                }
+
+                document.addEventListener("keydown", (event) => {
+                    if (event.target.tagName === "INPUT") return;
+
+                    switch (event.key) {
+                        case "ArrowDown":
+                        case "j":
+                            event.preventDefault();
+                            focusRow(
+                                currentFocusIndex === -1
+                                    ? 0
+                                    : Math.min(
+                                          currentFocusIndex + 1,
+                                          rows.length - 1,
+                                      ),
+                            );
+                            break;
+
+                        case "ArrowUp":
+                        case "k":
+                            event.preventDefault();
+                            focusRow(
+                                currentFocusIndex === -1
+                                    ? rows.length - 1
+                                    : Math.max(currentFocusIndex - 1, 0),
+                            );
+                            break;
+
+                        case "Enter":
+                        case " ":
+                            event.preventDefault();
+                            handleRowSelection();
+                            break;
+
+                        case "Backspace":
+                            event.preventDefault();
+                            navigateToParent();
+                            break;
+
+                        case "Home":
+                            event.preventDefault();
+                            focusRow(0);
+                            break;
+
+                        case "End":
+                            event.preventDefault();
+                            focusRow(rows.length - 1);
+                            break;
+                    }
+                });
+
+                rows.forEach((row, index) => {
+                    row.addEventListener("mouseenter", () => {
+                        focusRow(index);
+                    });
+                });
+
+                if (rows.length > 0) {
+                    focusRow(0);
+                }
+
+                const style = document.createElement("style");
+                style.textContent = `
+        tr.keyboard-focused {
+            background-color: var(--hover-color) !important;
+            outline: 2px solid var(--link-color);
+        }
+    `;
+                document.head.appendChild(style);
+            });
         </script>
     </body>
 </html>
