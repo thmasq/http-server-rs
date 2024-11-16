@@ -6,11 +6,7 @@
         <title>Directory listing: /{{ current_path }}</title>
         <link
             rel="stylesheet"
-            href="https://cdn.vidstack.io/player/theme.css"
-        />
-        <link
-            rel="stylesheet"
-            href="https://cdn.vidstack.io/player/video.css"
+            href="https://cdnjs.cloudflare.com/ajax/libs/plyr/3.7.8/plyr.css"
         />
         <style>
             :root {
@@ -143,11 +139,16 @@
                 justify-content: center;
                 align-items: center;
             }
-            media-player {
+            .video-container .plyr {
                 width: 100%;
                 height: 100%;
-                --media-brand: var(--link-color);
-                --media-focus-ring-color: var(--link-color);
+            }
+            .video-container .plyr video {
+                width: 100%;
+                height: 100%;
+                max-width: 90vw;
+                max-height: 90vh;
+                object-fit: contain;
             }
             .modal-close {
                 position: absolute;
@@ -207,7 +208,7 @@
             </tr>
             {% endfor %}
         </table>
-        <script src="https://cdn.vidstack.io/player" type="module"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/plyr/3.7.8/plyr.min.js"></script>
         <script>
             function toggleTheme() {
                 const body = document.documentElement;
@@ -294,99 +295,46 @@
 
                     const videoContainer = document.createElement("div");
                     videoContainer.classList.add("video-container");
-                    videoContainer.id = "video-player-container";
+
+                    const videoElement = document.createElement("video");
+                    videoElement.controls = true;
+                    videoElement.classList.add("plyr-video");
+
+                    const subtitles = await findSubtitles(videoSrc);
+                    if (subtitles.length > 0) {
+                        subtitles.forEach((track) => {
+                            const trackElement =
+                                document.createElement("track");
+                            trackElement.kind = track.kind;
+                            trackElement.label = track.label;
+                            trackElement.src = track.src;
+                            videoElement.appendChild(trackElement);
+                        });
+                    }
+
+                    videoElement.src = videoSrc;
+                    videoContainer.appendChild(videoElement);
                     modalContent.appendChild(videoContainer);
-                    modal.style.display = "flex";
 
-                    const basePath = videoSrc.substring(
-                        0,
-                        videoSrc.lastIndexOf("."),
-                    );
-                    const subtitles = [];
+                    const player = new Plyr(videoElement);
 
-                    for (const ext of [".srt", ".vtt"]) {
-                        try {
-                            const response = await fetch(`${basePath}${ext}`);
-                            if (response.ok) {
-                                subtitles.push({
-                                    src: `${basePath}${ext}`,
-                                    label: `Subtitles (${ext.substring(1)})`,
-                                    language: "en",
-                                    kind: "subtitles",
-                                    default: ext === ".vtt",
-                                });
-                            }
-                        } catch (e) {
-                            console.log(`No ${ext} subtitles found`);
+                    videoElement.addEventListener("loadedmetadata", () => {
+                        const videoAspectRatio =
+                            videoElement.videoWidth / videoElement.videoHeight;
+                        const modalWidth = modalContent.clientWidth;
+                        const modalHeight = modalContent.clientHeight;
+                        const modalAspectRatio = modalWidth / modalHeight;
+
+                        if (videoAspectRatio > modalAspectRatio) {
+                            videoContainer.style.width = "100%";
+                            videoContainer.style.height = "auto";
+                        } else {
+                            videoContainer.style.height = "100%";
+                            videoContainer.style.width = "auto";
                         }
-                    }
+                    });
 
-                    try {
-                        const { VidstackPlayer, VidstackPlayerLayout } =
-                            await import("https://cdn.vidstack.io/player");
-
-                        const player = await VidstackPlayer.create({
-                            target: "#video-player-container",
-                            src: videoSrc,
-                            title: videoSrc.split("/").pop(),
-                            tracks: subtitles,
-                            controls: true,
-                            layout: new VidstackPlayerLayout({
-                            }),
-                        });
-
-                        document.addEventListener("keydown", (e) => {
-                            if (modal.style.display === "flex") {
-                                switch (e.key.toLowerCase()) {
-                                    case " ":
-                                    case "p":
-                                        e.preventDefault();
-                                        player.paused
-                                            ? player.play()
-                                            : player.pause();
-                                        break;
-                                    case "f":
-                                        e.preventDefault();
-                                        player.fullscreen = !player.fullscreen;
-                                        break;
-                                    case "m":
-                                        e.preventDefault();
-                                        player.muted = !player.muted;
-                                        break;
-                                }
-                            }
-                        });
-
-                        const cleanup = () => {
-                            player.destroy();
-                            modalContent.innerHTML = "";
-                        };
-
-                        modal.addEventListener("click", (event) => {
-                            if (event.target === modal) {
-                                modal.style.display = "none";
-                                cleanup();
-                            }
-                        });
-
-                        closeButton.onclick = () => {
-                            modal.style.display = "none";
-                            cleanup();
-                        };
-
-                        document.addEventListener("keydown", (event) => {
-                            if (event.key === "Escape") {
-                                modal.style.display = "none";
-                                cleanup();
-                            }
-                        });
-                    } catch (error) {
-                        console.error(
-                            "Error initializing video player:",
-                            error,
-                        );
-                        videoContainer.innerHTML = "Error loading video player";
-                    }
+                    modal.style.display = "flex";
                 }
 
                 const links = document.querySelectorAll("a");
