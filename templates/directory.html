@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html lang="en" data-theme="dark">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Directory listing: /{{ current_path }}</title>
-    <style>
-        :root {
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Directory listing: /{{ current_path }}</title>
+        <style>
+            :root {
             --bg-primary: #ffffff;
             --bg-secondary: #f8f9fa;
             --text-primary: #1a1a1a;
@@ -13,9 +13,8 @@
             --border-color: #eaeaea;
             --hover-color: #f5f5f5;
             --link-color: #0066cc;
-        }
-
-        [data-theme="dark"] {
+            }
+            [data-theme="dark"] {
             --bg-primary: #1a1a1a;
             --bg-secondary: #2d2d2d;
             --text-primary: #ffffff;
@@ -23,16 +22,14 @@
             --border-color: #404040;
             --hover-color: #333333;
             --link-color: #66b3ff;
-        }
-
-        * {
+            }
+            * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
             transition: background-color 0.3s, color 0.3s;
-        }
-
-        body {
+            }
+            body {
             font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background-color: var(--bg-primary);
             color: var(--text-primary);
@@ -40,18 +37,16 @@
             max-width: 1200px;
             margin: 0 auto;
             padding: 20px;
-        }
-
-        .header {
+            }
+            .header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             padding: 20px 0;
             border-bottom: 1px solid var(--border-color);
             margin-bottom: 20px;
-        }
-
-        .theme-toggle {
+            }
+            .theme-toggle {
             background: var(--bg-secondary);
             border: 1px solid var(--border-color);
             color: var(--text-primary);
@@ -62,142 +57,201 @@
             display: flex;
             align-items: center;
             gap: 8px;
-        }
-
-        .theme-toggle:hover {
+            }
+            .theme-toggle:hover {
             background: var(--hover-color);
-        }
-
-        table {
+            }
+            table {
             width: 100%;
             border-collapse: collapse;
             background-color: var(--bg-primary);
             border-radius: 8px;
             overflow: hidden;
-        }
-
-        th, td {
+            }
+            th, td {
             padding: 12px 16px;
             text-align: left;
             border-bottom: 1px solid var(--border-color);
-        }
-
-        th {
+            }
+            th {
             background-color: var(--bg-secondary);
             font-weight: 500;
             color: var(--text-primary);
-        }
-
-        tr:hover {
+            }
+            tr:hover {
             background-color: var(--hover-color);
-        }
-
-        a {
+            }
+            a {
             text-decoration: none;
             color: var(--link-color);
             display: flex;
             align-items: center;
             gap: 8px;
-        }
-
-        a:hover {
+            }
+            a:hover {
             text-decoration: underline;
-        }
-
-        .size-column {
-            width: 150px;
-        }
-
-        .modified-column {
-            width: 200px;
-        }
-
-        @media (max-width: 768px) {
-            .modified-column {
-                display: none;
             }
-            
             .size-column {
-                width: 100px;
+            width: 150px;
             }
-            
+            .modified-column {
+            width: 200px;
+            }
+            @media (max-width: 768px) {
+            .modified-column {
+            display: none;
+            }
+            .size-column {
+            width: 100px;
+            }
             th, td {
-                padding: 12px 8px;
+            padding: 12px 8px;
             }
-        }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h2>Directory listing: /{{ current_path }}</h2>
-        <button class="theme-toggle" onclick="toggleTheme()">
+            }
+            .modal {
+            display: none;
+            position: fixed;
+            z-index: 9999;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            justify-content: center;
+            align-items: center;
+            overflow: auto;
+            }
+            .modal-content {
+            position: relative;
+            max-width: 90%;
+            max-height: 80%;
+            background-color: #fff;
+            padding: 4px;
+            border-radius: 2px;
+            }
+            .modal video {
+            width: 100%;
+            height: auto;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h2>Directory listing: /{{ current_path }}</h2>
+            <button class="theme-toggle" onclick="toggleTheme()">
             <span class="theme-icon">☀️</span>
             <span class="theme-text">Light Mode</span>
-        </button>
-    </div>
-    <table>
-        <tr>
-            <th>Name</th>
-            <th class="size-column">Size</th>
-            <th class="modified-column">Modified</th>
-        </tr>
-        {% if has_parent %}
-        <tr>
-            <td><a href="/{{ parent_path }}">📁 ..</a></td>
-            <td>-</td>
-            <td>-</td>
-        </tr>
-        {% endif %}
-        {% for entry in entries %}
-        <tr>
-            <td>
-                <a href="/{{ entry.path }}">
+            </button>
+        </div>
+        <table>
+            <tr>
+                <th>Name</th>
+                <th class="size-column">Size</th>
+                <th class="modified-column">Modified</th>
+            </tr>
+            {% if has_parent %}
+            <tr>
+                <td><a href="/{{ parent_path }}">📁 ..</a></td>
+                <td>-</td>
+                <td>-</td>
+            </tr>
+            {% endif %}
+            {% for entry in entries %}
+            <tr>
+                <td>
+                    <a href="/{{ entry.path }}">
                     {% if entry.is_dir %}📁{% else %}📄{% endif %}
                     {{ entry.name }}
-                </a>
-            </td>
-            <td>{{ entry.size }}</td>
-            <td class="modified-column">{{ entry.modified }}</td>
-        </tr>
-        {% endfor %}
-    </table>
-
-    <script>
-        function toggleTheme() {
-            const body = document.documentElement;
-            const button = document.querySelector('.theme-toggle');
-            const icon = document.querySelector('.theme-icon');
-            const text = document.querySelector('.theme-text');
-            
-            if (body.getAttribute('data-theme') === 'dark') {
-                body.removeAttribute('data-theme');
-                icon.textContent = '🌙';
-                text.textContent = 'Dark Mode';
-            } else {
-                body.setAttribute('data-theme', 'dark');
-                icon.textContent = '☀️';
-                text.textContent = 'Light Mode';
+                    </a>
+                </td>
+                <td>{{ entry.size }}</td>
+                <td class="modified-column">{{ entry.modified }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+        <script>
+            function toggleTheme() {
+                const body = document.documentElement;
+                const button = document.querySelector('.theme-toggle');
+                const icon = document.querySelector('.theme-icon');
+                const text = document.querySelector('.theme-text');
+                
+                if (body.getAttribute('data-theme') === 'dark') {
+                    body.removeAttribute('data-theme');
+                    icon.textContent = '🌙';
+                    text.textContent = 'Dark Mode';
+                } else {
+                    body.setAttribute('data-theme', 'dark');
+                    icon.textContent = '☀️';
+                    text.textContent = 'Light Mode';
+                }
+                
+                localStorage.setItem('theme', body.getAttribute('data-theme') || 'light');
             }
             
-            localStorage.setItem('theme', body.getAttribute('data-theme') || 'light');
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            const savedTheme = localStorage.getItem('theme') || 'dark';
-            const html = document.documentElement;
-            const icon = document.querySelector('.theme-icon');
-            const text = document.querySelector('.theme-text');
+            document.addEventListener('DOMContentLoaded', () => {
+                const savedTheme = localStorage.getItem('theme') || 'dark';
+                const html = document.documentElement;
+                const icon = document.querySelector('.theme-icon');
+                const text = document.querySelector('.theme-text');
+                
+                if (savedTheme === 'dark') {
+                    html.setAttribute('data-theme', 'dark');
+                    icon.textContent = '☀️';
+                    text.textContent = 'Light Mode';
+                } else {
+                    html.removeAttribute('data-theme');
+                    icon.textContent = '🌙';
+                    text.textContent = 'Dark Mode';
+                }
+            });
+            document.addEventListener('DOMContentLoaded', () => {
+            const videoMimeTypes = ['video/mp4', 'video/webm', 'video/mkv'];
             
-            if (savedTheme === 'dark') {
-                html.setAttribute('data-theme', 'dark');
-                icon.textContent = '☀️';
-                text.textContent = 'Light Mode';
-            } else {
-                html.removeAttribute('data-theme');
-                icon.textContent = '🌙';
-                text.textContent = 'Dark Mode';
+            const modal = document.createElement('div');
+            modal.classList.add('modal');
+            const modalContent = document.createElement('div');
+            modalContent.classList.add('modal-content');
+            modal.appendChild(modalContent);
+            document.body.appendChild(modal);
+            
+            function openVideoModal(videoSrc) {
+                const videoPlayer = document.createElement('video');
+                videoPlayer.controls = true;
+                videoPlayer.src = videoSrc;
+                modalContent.appendChild(videoPlayer);
+                modal.style.display = 'flex';
             }
-        });
-    </script>
-</body>
+            
+            modal.addEventListener('click', (event) => {
+                if (event.target === modal) {
+                    modal.style.display = 'none';
+                    modalContent.innerHTML = '';
+                    modalContent.appendChild(closeButton);
+                }
+            });
+            
+            const links = document.querySelectorAll('a');
+            
+            links.forEach(link => {
+                const filePath = link.getAttribute('href');
+                const fileName = link.textContent.trim();
+            
+                if (fileName.match(/\.(mp4|webm|ogg)$/i)) {
+                    link.addEventListener('click', function (event) {
+                        event.preventDefault();
+                        openVideoModal(link.getAttribute('href'));
+                    });
+                }
+            });
+            document.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape') {
+                    modal.style.display = 'none';
+                    modalContent.innerHTML = '';
+                }
+            });
+            });
+        </script>
+    </body>
 </html>
+
