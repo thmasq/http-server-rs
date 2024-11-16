@@ -247,22 +247,6 @@
                     icon.textContent = "🌙";
                     text.textContent = "Dark Mode";
                 }
-            });
-            document.addEventListener("DOMContentLoaded", () => {
-                const savedTheme = localStorage.getItem("theme") || "dark";
-                const html = document.documentElement;
-                const icon = document.querySelector(".theme-icon");
-                const text = document.querySelector(".theme-text");
-
-                if (savedTheme === "dark") {
-                    html.setAttribute("data-theme", "dark");
-                    icon.textContent = "☀️";
-                    text.textContent = "Light Mode";
-                } else {
-                    html.removeAttribute("data-theme");
-                    icon.textContent = "🌙";
-                    text.textContent = "Dark Mode";
-                }
 
                 const modal = document.createElement("div");
                 modal.classList.add("modal");
@@ -326,10 +310,6 @@
                             trackElement.src = track.src;
                             videoElement.appendChild(trackElement);
                         });
-                    }
-
-                    if (videoSrc.endsWith(".mkv")) {
-                        videoSrc = videoSrc.replace(".mkv", ".mp4");
                     }
 
                     videoElement.src = videoSrc;
