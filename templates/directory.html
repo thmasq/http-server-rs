@@ -211,11 +211,11 @@
         <script>
             function toggleTheme() {
                 const body = document.documentElement;
-                const button = document.querySelector(".theme-toggle");
                 const icon = document.querySelector(".theme-icon");
                 const text = document.querySelector(".theme-text");
+                const isDark = body.getAttribute("data-theme") === "dark";
 
-                if (body.getAttribute("data-theme") === "dark") {
+                if (isDark) {
                     body.removeAttribute("data-theme");
                     icon.textContent = "🌙";
                     text.textContent = "Dark Mode";
@@ -225,82 +225,52 @@
                     text.textContent = "Light Mode";
                 }
 
-                localStorage.setItem(
-                    "theme",
-                    body.getAttribute("data-theme") || "light",
-                );
+                localStorage.setItem("theme", isDark ? "light" : "dark");
             }
 
-            document.addEventListener("DOMContentLoaded", () => {
-                const savedTheme = localStorage.getItem("theme") || "dark";
-                const html = document.documentElement;
-                const icon = document.querySelector(".theme-icon");
-                const text = document.querySelector(".theme-text");
+            class VideoModal {
+                constructor() {
+                    this.modal = document.createElement("div");
+                    this.modal.classList.add("modal");
+                    this.modalContent = document.createElement("div");
+                    this.modalContent.classList.add("modal-content");
+                    this.closeButton = this.createCloseButton();
 
-                if (savedTheme === "dark") {
-                    html.setAttribute("data-theme", "dark");
-                    icon.textContent = "☀️";
-                    text.textContent = "Light Mode";
-                } else {
-                    html.removeAttribute("data-theme");
-                    icon.textContent = "🌙";
-                    text.textContent = "Dark Mode";
+                    this.modal.appendChild(this.modalContent);
+                    this.setupEventListeners();
                 }
 
-                const modal = document.createElement("div");
-                modal.classList.add("modal");
-                const modalContent = document.createElement("div");
-                modalContent.classList.add("modal-content");
+                createCloseButton() {
+                    const button = document.createElement("button");
+                    button.classList.add("modal-close");
+                    button.innerHTML = "×";
+                    button.onclick = () => this.close();
+                    return button;
+                }
 
-                const closeButton = document.createElement("button");
-                closeButton.classList.add("modal-close");
-                closeButton.innerHTML = "×";
-                closeButton.onclick = () => {
-                    modal.style.display = "none";
-                    modalContent.innerHTML = "";
-                };
+                setupEventListeners() {
+                    this.modal.addEventListener("click", (event) => {
+                        if (event.target === this.modal) this.close();
+                    });
 
-                modal.appendChild(modalContent);
-                document.body.appendChild(modal);
+                    document.addEventListener("keydown", (event) => {
+                        if (event.key === "Escape") this.close();
+                    });
+                }
 
-                async function findSubtitles(videoPath) {
+                close() {
+                    this.modal.style.display = "none";
+                    this.modalContent.innerHTML = "";
+                    if (this.currentPlayer) {
+                        this.currentPlayer.destroy();
+                        this.currentPlayer = null;
+                    }
+                }
+
+                async findSubtitles(videoPath) {
                     const basePath = videoPath.substring(
                         0,
                         videoPath.lastIndexOf("."),
-                    );
-                    const subtitles = [];
-
-                    for (const ext of [".srt", ".vtt"]) {
-                        try {
-                            const response = await fetch(`${basePath}${ext}`);
-                            if (response.ok) {
-                                subtitles.push({
-                                    kind: "captions",
-                                    label: `Subtitles (${ext.substring(1)})`,
-                                    src: `${basePath}${ext}`,
-                                });
-                            }
-                        } catch (e) {
-                            console.log(`No ${ext} subtitles found`);
-                        }
-                    }
-
-                    return subtitles;
-                }
-
-                async function openVideoModal(videoSrc) {
-                    modalContent.innerHTML = "";
-                    modalContent.appendChild(closeButton);
-
-                    const videoContainer = document.createElement("div");
-                    videoContainer.classList.add("video-container");
-                    videoContainer.id = "video-player-container";
-                    modalContent.appendChild(videoContainer);
-                    modal.style.display = "flex";
-
-                    const basePath = videoSrc.substring(
-                        0,
-                        videoSrc.lastIndexOf("."),
                     );
                     const subtitles = [];
 
@@ -321,65 +291,94 @@
                         }
                     }
 
+                    return subtitles;
+                }
+
+                async checkDashManifest(videoPath) {
+                    const basePath = videoPath.substring(
+                        0,
+                        videoPath.lastIndexOf("."),
+                    );
+                    const mpdPath = `${basePath}.mpd`;
+
+                    try {
+                        const response = await fetch(mpdPath, {
+                            method: "HEAD",
+                            headers: {
+                                Accept: "application/dash+xml",
+                            },
+                        });
+
+                        // Only return the MPD path if the server responds with the correct content type
+                        if (
+                            response.ok &&
+                            response.headers
+                                .get("content-type")
+                                ?.includes("dash+xml")
+                        ) {
+                            return mpdPath;
+                        }
+                        console.log(
+                            "DASH manifest not found or invalid content type",
+                        );
+                        return null;
+                    } catch (e) {
+                        console.log("Error checking DASH manifest:", e);
+                        return null;
+                    }
+                }
+
+                async openVideo(videoSrc) {
+                    this.modalContent.innerHTML = "";
+                    this.modalContent.appendChild(this.closeButton);
+
+                    const videoContainer = document.createElement("div");
+                    videoContainer.classList.add("video-container");
+                    videoContainer.id = "video-player-container";
+                    this.modalContent.appendChild(videoContainer);
+                    this.modal.style.display = "flex";
+
+                    const subtitles = await this.findSubtitles(videoSrc);
+                    const dashManifestPath =
+                        await this.checkDashManifest(videoSrc);
+
                     try {
                         const { VidstackPlayer, VidstackPlayerLayout } =
                             await import("https://cdn.vidstack.io/player");
 
-                        const player = await VidstackPlayer.create({
+                        let source;
+                        if (dashManifestPath) {
+                            console.log(
+                                "Using DASH manifest:",
+                                dashManifestPath,
+                            );
+                            source = {
+                                type: "application/dash+xml",
+                                src: dashManifestPath,
+                            };
+                        } else {
+                            console.log(
+                                "Falling back to direct video source:",
+                                videoSrc,
+                            );
+                            source = {
+                                type: this.getVideoMimeType(videoSrc),
+                                src: videoSrc,
+                            };
+                        }
+
+                        const playerConfig = {
                             target: "#video-player-container",
-                            src: videoSrc,
                             title: videoSrc.split("/").pop(),
+                            src: source,
                             tracks: subtitles,
                             controls: true,
-                            layout: new VidstackPlayerLayout({
-                            }),
-                        });
-
-                        document.addEventListener("keydown", (e) => {
-                            if (modal.style.display === "flex") {
-                                switch (e.key.toLowerCase()) {
-                                    case " ":
-                                    case "p":
-                                        e.preventDefault();
-                                        player.paused
-                                            ? player.play()
-                                            : player.pause();
-                                        break;
-                                    case "f":
-                                        e.preventDefault();
-                                        player.fullscreen = !player.fullscreen;
-                                        break;
-                                    case "m":
-                                        e.preventDefault();
-                                        player.muted = !player.muted;
-                                        break;
-                                }
-                            }
-                        });
-
-                        const cleanup = () => {
-                            player.destroy();
-                            modalContent.innerHTML = "";
+                            layout: new VidstackPlayerLayout({}),
                         };
 
-                        modal.addEventListener("click", (event) => {
-                            if (event.target === modal) {
-                                modal.style.display = "none";
-                                cleanup();
-                            }
-                        });
-
-                        closeButton.onclick = () => {
-                            modal.style.display = "none";
-                            cleanup();
-                        };
-
-                        document.addEventListener("keydown", (event) => {
-                            if (event.key === "Escape") {
-                                modal.style.display = "none";
-                                cleanup();
-                            }
-                        });
+                        this.currentPlayer =
+                            await VidstackPlayer.create(playerConfig);
+                        this.setupPlayerKeyboardControls();
                     } catch (error) {
                         console.error(
                             "Error initializing video player:",
@@ -389,44 +388,64 @@
                     }
                 }
 
-                const links = document.querySelectorAll("a");
-                links.forEach((link) => {
-                    const fileName = link.textContent.trim();
-                    if (fileName.match(/\.(mp4|webm|mkv)$/i)) {
-                        link.addEventListener("click", function (event) {
-                            event.preventDefault();
-                            openVideoModal(link.getAttribute("href"));
-                        });
-                    }
-                });
+                getVideoMimeType(videoSrc) {
+                    const extension = videoSrc.split(".").pop().toLowerCase();
+                    const mimeTypes = {
+                        mp4: "video/mp4",
+                        webm: "video/webm",
+                        mkv: "video/x-matroska",
+                    };
+                    return mimeTypes[extension] || "video/mp4";
+                }
 
-                document.addEventListener("keydown", (event) => {
-                    if (event.key === "Escape") {
-                        modal.style.display = "none";
-                        modalContent.innerHTML = "";
-                    }
-                });
+                setupPlayerKeyboardControls() {
+                    document.addEventListener("keydown", (e) => {
+                        if (
+                            this.modal.style.display === "flex" &&
+                            this.currentPlayer
+                        ) {
+                            switch (e.key.toLowerCase()) {
+                                case " ":
+                                case "p":
+                                    e.preventDefault();
+                                    this.currentPlayer.paused
+                                        ? this.currentPlayer.play()
+                                        : this.currentPlayer.pause();
+                                    break;
+                                case "f":
+                                    e.preventDefault();
+                                    this.currentPlayer.fullscreen =
+                                        !this.currentPlayer.fullscreen;
+                                    break;
+                                case "m":
+                                    e.preventDefault();
+                                    this.currentPlayer.muted =
+                                        !this.currentPlayer.muted;
+                                    break;
+                            }
+                        }
+                    });
+                }
+            }
 
-                modal.addEventListener("click", (event) => {
-                    if (event.target === modal) {
-                        modal.style.display = "none";
-                        modalContent.innerHTML = "";
-                    }
-                });
-            });
+            class TableNavigator {
+                constructor() {
+                    this.currentFocusIndex = -1;
+                    this.rows = Array.from(
+                        document.querySelectorAll("table tr"),
+                    ).slice(1);
+                    this.setupEventListeners();
+                    this.setupStyles();
+                }
 
-            document.addEventListener("DOMContentLoaded", () => {
-                let currentFocusIndex = -1;
-                const rows = Array.from(
-                    document.querySelectorAll("table tr"),
-                ).slice(1);
+                focusRow(index) {
+                    this.rows.forEach(
+                        (row) => (row.style.backgroundColor = ""),
+                    );
 
-                function focusRow(index) {
-                    rows.forEach((row) => (row.style.backgroundColor = ""));
-
-                    if (index >= 0 && index < rows.length) {
-                        currentFocusIndex = index;
-                        const row = rows[currentFocusIndex];
+                    if (index >= 0 && index < this.rows.length) {
+                        this.currentFocusIndex = index;
+                        const row = this.rows[this.currentFocusIndex];
                         row.style.backgroundColor = "var(--hover-color)";
                         row.scrollIntoView({
                             block: "nearest",
@@ -435,37 +454,39 @@
                     }
                 }
 
-                function navigateToParent() {
+                navigateToParent() {
                     const currentPath = window.location.pathname;
                     const normalizedPath = currentPath.endsWith("/")
                         ? currentPath.slice(0, -1)
                         : currentPath;
-
                     const pathSegments = normalizedPath.split("/");
 
                     if (pathSegments.length <= 1) return;
 
                     pathSegments.pop();
                     const parentPath = pathSegments.join("/") || "/";
-
                     window.location.href = parentPath;
                 }
 
-                function handleRowSelection() {
+                handleRowSelection() {
                     if (
-                        currentFocusIndex >= 0 &&
-                        currentFocusIndex < rows.length
+                        this.currentFocusIndex >= 0 &&
+                        this.currentFocusIndex < this.rows.length
                     ) {
-                        const link = rows[currentFocusIndex].querySelector("a");
+                        const link =
+                            this.rows[this.currentFocusIndex].querySelector(
+                                "a",
+                            );
                         if (link) {
                             const fileName = link.textContent.trim();
                             if (fileName.match(/\.(mp4|webm|ogg)$/i)) {
-                                const event = new MouseEvent("click", {
-                                    bubbles: true,
-                                    cancelable: true,
-                                    view: window,
-                                });
-                                link.dispatchEvent(event);
+                                link.dispatchEvent(
+                                    new MouseEvent("click", {
+                                        bubbles: true,
+                                        cancelable: true,
+                                        view: window,
+                                    }),
+                                );
                             } else {
                                 window.location.href = link.href;
                             }
@@ -473,74 +494,113 @@
                     }
                 }
 
-                document.addEventListener("keydown", (event) => {
-                    if (event.target.tagName === "INPUT") return;
+                setupEventListeners() {
+                    document.addEventListener("keydown", (event) => {
+                        if (event.target.tagName === "INPUT") return;
 
-                    switch (event.key) {
-                        case "ArrowDown":
-                        case "j":
-                            event.preventDefault();
-                            focusRow(
-                                currentFocusIndex === -1
-                                    ? 0
-                                    : Math.min(
-                                          currentFocusIndex + 1,
-                                          rows.length - 1,
-                                      ),
-                            );
-                            break;
+                        switch (event.key) {
+                            case "ArrowDown":
+                            case "j":
+                                event.preventDefault();
+                                this.focusRow(
+                                    this.currentFocusIndex === -1
+                                        ? 0
+                                        : Math.min(
+                                              this.currentFocusIndex + 1,
+                                              this.rows.length - 1,
+                                          ),
+                                );
+                                break;
 
-                        case "ArrowUp":
-                        case "k":
-                            event.preventDefault();
-                            focusRow(
-                                currentFocusIndex === -1
-                                    ? rows.length - 1
-                                    : Math.max(currentFocusIndex - 1, 0),
-                            );
-                            break;
+                            case "ArrowUp":
+                            case "k":
+                                event.preventDefault();
+                                this.focusRow(
+                                    this.currentFocusIndex === -1
+                                        ? this.rows.length - 1
+                                        : Math.max(
+                                              this.currentFocusIndex - 1,
+                                              0,
+                                          ),
+                                );
+                                break;
 
-                        case "Enter":
-                        case " ":
-                            event.preventDefault();
-                            handleRowSelection();
-                            break;
+                            case "Enter":
+                            case " ":
+                                event.preventDefault();
+                                this.handleRowSelection();
+                                break;
 
-                        case "Backspace":
-                            event.preventDefault();
-                            navigateToParent();
-                            break;
+                            case "Backspace":
+                                event.preventDefault();
+                                this.navigateToParent();
+                                break;
 
-                        case "Home":
-                            event.preventDefault();
-                            focusRow(0);
-                            break;
+                            case "Home":
+                                event.preventDefault();
+                                this.focusRow(0);
+                                break;
 
-                        case "End":
+                            case "End":
+                                event.preventDefault();
+                                this.focusRow(this.rows.length - 1);
+                                break;
+                        }
+                    });
+
+                    this.rows.forEach((row, index) => {
+                        row.addEventListener("mouseenter", () =>
+                            this.focusRow(index),
+                        );
+                    });
+                }
+
+                setupStyles() {
+                    const style = document.createElement("style");
+                    style.textContent = `
+            tr.keyboard-focused {
+                background-color: var(--hover-color) !important;
+                outline: 2px solid var(--link-color);
+            }
+        `;
+                    document.head.appendChild(style);
+                }
+            }
+
+            document.addEventListener("DOMContentLoaded", () => {
+                const savedTheme = localStorage.getItem("theme") || "dark";
+                const html = document.documentElement;
+                const icon = document.querySelector(".theme-icon");
+                const text = document.querySelector(".theme-text");
+
+                if (savedTheme === "dark") {
+                    html.setAttribute("data-theme", "dark");
+                    icon.textContent = "☀️";
+                    text.textContent = "Light Mode";
+                } else {
+                    html.removeAttribute("data-theme");
+                    icon.textContent = "🌙";
+                    text.textContent = "Dark Mode";
+                }
+
+                const videoModal = new VideoModal();
+                document.body.appendChild(videoModal.modal);
+
+                const links = document.querySelectorAll("a");
+                links.forEach((link) => {
+                    const fileName = link.textContent.trim();
+                    if (fileName.match(/\.(mp4|webm|mkv)$/i)) {
+                        link.addEventListener("click", function (event) {
                             event.preventDefault();
-                            focusRow(rows.length - 1);
-                            break;
+                            videoModal.openVideo(link.getAttribute("href"));
+                        });
                     }
                 });
 
-                rows.forEach((row, index) => {
-                    row.addEventListener("mouseenter", () => {
-                        focusRow(index);
-                    });
-                });
-
-                if (rows.length > 0) {
-                    focusRow(0);
+                const tableNav = new TableNavigator();
+                if (tableNav.rows.length > 0) {
+                    tableNav.focusRow(0);
                 }
-
-                const style = document.createElement("style");
-                style.textContent = `
-        tr.keyboard-focused {
-            background-color: var(--hover-color) !important;
-            outline: 2px solid var(--link-color);
-        }
-    `;
-                document.head.appendChild(style);
             });
         </script>
     </body>
