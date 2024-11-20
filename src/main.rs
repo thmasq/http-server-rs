@@ -2,10 +2,19 @@ use actix_files::NamedFile;
 use actix_web::error::ErrorInternalServerError;
 use actix_web::{get, middleware, App, HttpRequest, HttpResponse, HttpServer, Result};
 use askama::Template;
+use bytes::Bytes;
 use clap::Parser;
+use futures::stream::Stream;
 use mime_guess::from_path;
 use serde::Serialize;
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
+
+const CHUNK_SIZE: usize = 64 * 1024;
+const VIDEO_CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/video-js.min.css"));
+const VIDEO_JS: &str = include_str!(concat!(env!("OUT_DIR"), "/video.min.js"));
 
 #[derive(Parser, Debug)]
 #[command(author, version, about = "Simple HTTP file server")]
@@ -15,6 +24,60 @@ struct Args {
 
 	#[arg(short = 'o', long = "open", help = "Listen on all interfaces (0.0.0.0)")]
 	open: bool,
+}
+
+#[allow(dead_code)]
+struct VideoStream {
+	file: File,
+	start: u64,
+	end: u64,
+	current_pos: u64,
+}
+
+impl VideoStream {
+	fn new(mut file: File, start: u64, end: u64) -> std::io::Result<Self> {
+		if start > end {
+			return Err(std::io::Error::new(
+				std::io::ErrorKind::InvalidInput,
+				"Start position must be less than or equal to end position",
+			));
+		}
+
+		file.seek(SeekFrom::Start(start))?;
+
+		Ok(Self {
+			file,
+			start,
+			end,
+			current_pos: start,
+		})
+	}
+}
+
+impl Stream for VideoStream {
+	type Item = Result<Bytes, std::io::Error>;
+
+	fn poll_next(self: Pin<&mut Self>, _cx: &mut std::task::Context<'_>) -> std::task::Poll<Option<Self::Item>> {
+		let this = self.get_mut();
+
+		if this.current_pos > this.end {
+			return std::task::Poll::Ready(None);
+		}
+
+		let remaining = (this.end - this.current_pos + 1) as usize;
+		let to_read = remaining.min(CHUNK_SIZE);
+		let mut buffer = vec![0; to_read];
+
+		match this.file.read(&mut buffer) {
+			Ok(0) => std::task::Poll::Ready(None),
+			Ok(n) => {
+				this.current_pos += n as u64;
+				buffer.truncate(n);
+				std::task::Poll::Ready(Some(Ok(Bytes::from(buffer))))
+			},
+			Err(e) => std::task::Poll::Ready(Some(Err(e))),
+		}
+	}
 }
 
 #[derive(Template)]
@@ -80,6 +143,33 @@ async fn get_dir_entries(path: &Path) -> std::io::Result<Vec<DirEntry>> {
 	Ok(entries)
 }
 
+fn parse_range(range_str: &str, file_size: u64) -> Option<(u64, u64)> {
+	let range = range_str.strip_prefix("bytes=")?;
+	let mut parts = range.split('-');
+
+	let start_str = parts.next()?;
+	let end_str = parts.next()?;
+
+	let start = if start_str.is_empty() {
+		let last_n = end_str.parse::<u64>().ok()?;
+		file_size.checked_sub(last_n)?
+	} else {
+		start_str.parse::<u64>().ok()?
+	};
+
+	let end = if end_str.is_empty() {
+		file_size - 1
+	} else {
+		end_str.parse::<u64>().ok()?
+	};
+
+	if start <= end && end < file_size {
+		Some((start, end))
+	} else {
+		None
+	}
+}
+
 #[allow(clippy::future_not_send)]
 #[get("/{path:.*}")]
 async fn serve_path(req: HttpRequest) -> Result<HttpResponse> {
@@ -118,16 +208,42 @@ async fn serve_path(req: HttpRequest) -> Result<HttpResponse> {
 			Err(_) => Ok(HttpResponse::InternalServerError().body("Failed to read directory")),
 		}
 	} else {
-		NamedFile::open(&final_path).map_or_else(
-			|_| Ok(HttpResponse::NotFound().body("File not found")),
-			|file| {
-				let mime_type = from_path(&final_path).first_or_octet_stream().to_string();
-				Ok(file
-					.set_content_type(mime_type.parse().expect("Failed to parse mime type"))
-					.into_response(&req))
-			},
-		)
+		let Ok(file) = File::open(&final_path) else {
+			return Ok(HttpResponse::NotFound().body("File not found"));
+		};
+
+		let mime_type = from_path(&final_path).first_or_octet_stream().to_string();
+		let file_size = file.metadata()?.len();
+
+		if let Some(range_header) = req.headers().get("range") {
+			let range_str = range_header.to_str().map_err(ErrorInternalServerError)?;
+			if let Some(range) = parse_range(range_str, file_size) {
+				let (start, end) = range;
+				let content_length = end - start + 1;
+
+				let stream = VideoStream::new(file, start, end).map_err(ErrorInternalServerError)?;
+
+				return Ok(HttpResponse::PartialContent()
+					.append_header(("Content-Type", mime_type))
+					.append_header(("Content-Length", content_length.to_string()))
+					.append_header(("Content-Range", format!("bytes {start}-{end}/{file_size}")))
+					.append_header(("Accept-Ranges", "bytes"))
+					.streaming(stream));
+			}
+		}
+
+		Ok(NamedFile::open(&final_path)?.into_response(&req))
 	}
+}
+
+#[get("/_static/video-js.min.css")]
+async fn serve_css() -> HttpResponse {
+	HttpResponse::Ok().content_type("text/css").body(VIDEO_CSS)
+}
+
+#[get("/_static/video.min.js")]
+async fn serve_js() -> HttpResponse {
+	HttpResponse::Ok().content_type("application/javascript").body(VIDEO_JS)
 }
 
 #[actix_web::main]
@@ -136,8 +252,14 @@ async fn main() -> std::io::Result<()> {
 	let host = if args.open { "0.0.0.0" } else { "127.0.0.1" };
 	println!("Starting server at http://{}:{}", host, args.port);
 
-	HttpServer::new(|| App::new().wrap(middleware::Compress::default()).service(serve_path))
-		.bind((host, args.port))?
-		.run()
-		.await
+	HttpServer::new(|| {
+		App::new()
+			.wrap(middleware::Compress::default())
+			.service(serve_css)
+			.service(serve_js)
+			.service(serve_path)
+	})
+	.bind((host, args.port))?
+	.run()
+	.await
 }

@@ -6,11 +6,7 @@
         <title>Directory listing: /{{ current_path }}</title>
         <link
             rel="stylesheet"
-            href="https://cdn.vidstack.io/player/theme.css"
-        />
-        <link
-            rel="stylesheet"
-            href="https://cdn.vidstack.io/player/video.css"
+            href="/_static/video-js.min.css"
         />
         <style>
             :root {
@@ -143,12 +139,6 @@
                 justify-content: center;
                 align-items: center;
             }
-            media-player {
-                width: 100%;
-                height: 100%;
-                --media-brand: var(--link-color);
-                --media-focus-ring-color: var(--link-color);
-            }
             .modal-close {
                 position: absolute;
                 right: -40px;
@@ -207,7 +197,22 @@
             </tr>
             {% endfor %}
         </table>
-        <script src="https://cdn.vidstack.io/player" type="module"></script>
+        <div class="modal">
+            <div class="modal-content">
+                <button class="modal-close">×</button>
+                <div class="video-container">
+                    <video
+                        id="my-video"
+                        class="video-js vjs-default-skin"
+                        controls
+                        preload="auto"
+                        width="640"
+                        height="360"
+                    ></video>
+                </div>
+            </div>
+        </div>
+        <script src="/_static/video.min.js"></script>
         <script>
             function toggleTheme() {
                 const body = document.documentElement;
@@ -247,21 +252,10 @@
                     text.textContent = "Dark Mode";
                 }
 
-                const modal = document.createElement("div");
-                modal.classList.add("modal");
-                const modalContent = document.createElement("div");
-                modalContent.classList.add("modal-content");
-
-                const closeButton = document.createElement("button");
-                closeButton.classList.add("modal-close");
-                closeButton.innerHTML = "×";
-                closeButton.onclick = () => {
-                    modal.style.display = "none";
-                    modalContent.innerHTML = "";
-                };
-
-                modal.appendChild(modalContent);
-                document.body.appendChild(modal);
+                const modal = document.querySelector(".modal");
+                const modalContent = document.querySelector(".modal-content");
+                const closeButton = document.querySelector(".modal-close");
+                const videoPlayer = videojs("my-video");
 
                 async function findSubtitles(videoPath) {
                     const basePath = videoPath.substring(
@@ -278,6 +272,7 @@
                                     kind: "captions",
                                     label: `Subtitles (${ext.substring(1)})`,
                                     src: `${basePath}${ext}`,
+                                    srclang: "en",
                                 });
                             }
                         } catch (e) {
@@ -289,104 +284,41 @@
                 }
 
                 async function openVideoModal(videoSrc) {
-                    modalContent.innerHTML = "";
-                    modalContent.appendChild(closeButton);
-
-                    const videoContainer = document.createElement("div");
-                    videoContainer.classList.add("video-container");
-                    videoContainer.id = "video-player-container";
-                    modalContent.appendChild(videoContainer);
-                    modal.style.display = "flex";
-
-                    const basePath = videoSrc.substring(
-                        0,
-                        videoSrc.lastIndexOf("."),
-                    );
-                    const subtitles = [];
-
-                    for (const ext of [".srt", ".vtt"]) {
-                        try {
-                            const response = await fetch(`${basePath}${ext}`);
-                            if (response.ok) {
-                                subtitles.push({
-                                    src: `${basePath}${ext}`,
-                                    label: `Subtitles (${ext.substring(1)})`,
-                                    language: "en",
-                                    kind: "subtitles",
-                                    default: ext === ".vtt",
-                                });
-                            }
-                        } catch (e) {
-                            console.log(`No ${ext} subtitles found`);
-                        }
-                    }
-
                     try {
-                        const { VidstackPlayer, VidstackPlayerLayout } =
-                            await import("https://cdn.vidstack.io/player");
+                        const subtitles = await findSubtitles(videoSrc);
 
-                        const player = await VidstackPlayer.create({
-                            target: "#video-player-container",
-                            src: videoSrc,
-                            title: videoSrc.split("/").pop(),
-                            tracks: subtitles,
-                            controls: true,
-                            layout: new VidstackPlayerLayout({
-                            }),
+                        videoPlayer.src({ type: "video/mp4", src: videoSrc });
+
+                        while (videoPlayer.textTracks().length > 0) {
+                            videoPlayer.removeRemoteTextTrack(
+                                videoPlayer.textTracks()[0],
+                            );
+                        }
+
+                        subtitles.forEach((subtitle) => {
+                            videoPlayer.addRemoteTextTrack(
+                                {
+                                    kind: subtitle.kind,
+                                    src: subtitle.src,
+                                    srclang: subtitle.srclang,
+                                    label: subtitle.label,
+                                    default: false,
+                                },
+                                false,
+                            );
                         });
 
-                        document.addEventListener("keydown", (e) => {
-                            if (modal.style.display === "flex") {
-                                switch (e.key.toLowerCase()) {
-                                    case " ":
-                                    case "p":
-                                        e.preventDefault();
-                                        player.paused
-                                            ? player.play()
-                                            : player.pause();
-                                        break;
-                                    case "f":
-                                        e.preventDefault();
-                                        player.fullscreen = !player.fullscreen;
-                                        break;
-                                    case "m":
-                                        e.preventDefault();
-                                        player.muted = !player.muted;
-                                        break;
-                                }
-                            }
-                        });
-
-                        const cleanup = () => {
-                            player.destroy();
-                            modalContent.innerHTML = "";
-                        };
-
-                        modal.addEventListener("click", (event) => {
-                            if (event.target === modal) {
-                                modal.style.display = "none";
-                                cleanup();
-                            }
-                        });
-
-                        closeButton.onclick = () => {
-                            modal.style.display = "none";
-                            cleanup();
-                        };
-
-                        document.addEventListener("keydown", (event) => {
-                            if (event.key === "Escape") {
-                                modal.style.display = "none";
-                                cleanup();
-                            }
-                        });
+                        modal.style.display = "flex";
+                        videoPlayer.play();
                     } catch (error) {
-                        console.error(
-                            "Error initializing video player:",
-                            error,
-                        );
-                        videoContainer.innerHTML = "Error loading video player";
+                        console.error("Error loading video:", error);
                     }
+                }
+
+                function closeVideoModal() {
+                    modal.style.display = "none";
+                    videoPlayer.pause();
+                    videoPlayer.currentTime(0);
                 }
 
                 const links = document.querySelectorAll("a");
@@ -400,17 +332,43 @@
                     }
                 });
 
-                document.addEventListener("keydown", (event) => {
-                    if (event.key === "Escape") {
-                        modal.style.display = "none";
-                        modalContent.innerHTML = "";
-                    }
-                });
+                closeButton.onclick = closeVideoModal;
 
                 modal.addEventListener("click", (event) => {
                     if (event.target === modal) {
-                        modal.style.display = "none";
-                        modalContent.innerHTML = "";
+                        closeVideoModal();
+                    }
+                });
+
+                document.addEventListener("keydown", (event) => {
+                    if (
+                        event.key === "Escape" &&
+                        modal.style.display === "flex"
+                    ) {
+                        closeVideoModal();
+                    }
+                });
+                document.addEventListener("keydown", (event) => {
+                    if (modal.style.display === "flex") {
+                        switch (event.key.toLowerCase()) {
+                            case " ":
+                            case "p":
+                                event.preventDefault();
+                                videoPlayer.paused()
+                                    ? videoPlayer.play()
+                                    : videoPlayer.pause();
+                                break;
+                            case "f":
+                                event.preventDefault();
+                                videoPlayer.isFullscreen()
+                                    ? videoPlayer.exitFullscreen()
+                                    : videoPlayer.requestFullscreen();
+                                break;
+                            case "m":
+                                event.preventDefault();
+                                videoPlayer.muted(!videoPlayer.muted());
+                                break;
+                        }
                     }
                 });
             });
