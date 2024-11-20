@@ -4,10 +4,7 @@
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Directory listing: /{{ current_path }}</title>
-        <link
-            rel="stylesheet"
-            href="/_static/video-js.min.css"
-        />
+        <link rel="stylesheet" href="/_static/video-js.min.css" />
         <style>
             :root {
                 --bg-primary: #ffffff;
@@ -287,7 +284,20 @@
                     try {
                         const subtitles = await findSubtitles(videoSrc);
 
-                        videoPlayer.src({ type: "video/mp4", src: videoSrc });
+                        videoPlayer.src({
+                            type: "video/mp4",
+                            src: videoSrc,
+                            withCredentials: false,
+                            useBrowserNativeControls: false,
+                        });
+
+                        videoPlayer.options({
+                            html5: {
+                                nativeTextTracks: false,
+                                useNativeSeek: true,
+                                preload: "metadata",
+                            },
+                        });
 
                         while (videoPlayer.textTracks().length > 0) {
                             videoPlayer.removeRemoteTextTrack(
