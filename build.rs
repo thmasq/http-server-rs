@@ -3,7 +3,7 @@ use std::io::Write;
 use std::path::Path;
 
 fn main() {
-	let out_dir = std::env::var("OUT_DIR").unwrap();
+	let out_dir = std::env::var("OUT_DIR").expect("Failed to get ENV variables");
 	let css_url = "https://unpkg.com/video.js/dist/video-js.min.css";
 	let js_url = "https://unpkg.com/video.js/dist/video.min.js";
 
